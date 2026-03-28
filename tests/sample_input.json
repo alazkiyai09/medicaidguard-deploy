@@ -1,0 +1,28 @@
+[
+  {
+    "transaction_id": "TXN-2025-001",
+    "provider_id": "PRV-12345",
+    "claim_amount": 15000.0,
+    "procedure_code": "99213",
+    "diagnosis_code": "J06.9",
+    "provider_type": "individual",
+    "patient_age": 45,
+    "claim_frequency_30d": 12,
+    "avg_claim_amount_90d": 8500.0,
+    "unique_patients_30d": 45,
+    "billing_pattern_score": 0.73
+  },
+  {
+    "transaction_id": "TXN-2025-002",
+    "provider_id": "PRV-99871",
+    "claim_amount": 350.0,
+    "procedure_code": "93000",
+    "diagnosis_code": "I10",
+    "provider_type": "organization",
+    "patient_age": 32,
+    "claim_frequency_30d": 1,
+    "avg_claim_amount_90d": 420.0,
+    "unique_patients_30d": 80,
+    "billing_pattern_score": 0.09
+  }
+]

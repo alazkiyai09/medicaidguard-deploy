@@ -1,0 +1,14 @@
+[
+  "claim_amount",
+  "claim_amount_log",
+  "procedure_code_freq",
+  "diagnosis_code_freq",
+  "provider_type_bin",
+  "patient_age",
+  "age_bucket",
+  "claim_frequency_30d",
+  "avg_claim_amount_90d",
+  "claim_amount_to_avg_ratio",
+  "unique_patients_30d",
+  "billing_pattern_score"
+]
