@@ -1,13 +1,19 @@
-# MedicaidGuard Cloud Deploy
+# MedicaidGuard Deploy
 
-Production-style FastAPI inference service for Medicaid fraud detection, designed for Cloud Run deployment and CI/CD automation.
+Production ML fraud detection inference service (XGBoost + FastAPI) prepared for GCP Cloud Run and CI/CD.
+
+## Live Demo (Deployment Placeholder)
+
+- API base URL: `https://medicaidguard-api-xxxxx-as.a.run.app`
+- Swagger docs: `https://medicaidguard-api-xxxxx-as.a.run.app/docs`
+- Status: `pending deployment`
 
 ## Endpoints
 
-- `POST /predict`: single transaction prediction
-- `POST /predict/batch`: batch predictions up to configured max size
-- `GET /health`: model and runtime health
-- `GET /metrics`: aggregated inference metrics
+- `POST /predict`
+- `POST /predict/batch`
+- `GET /health`
+- `GET /metrics`
 
 ## Local Run
 
@@ -19,7 +25,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open docs at `http://localhost:8000/docs`.
+Docs: `http://localhost:8000/docs`
 
 ## Docker
 
@@ -36,6 +42,8 @@ pytest --cov=app --cov-report=term-missing -v
 
 ## Deployment
 
-- Manual deploy script: `scripts/deploy_cloudrun.sh`
-- GCS model upload script: `scripts/upload_model_gcs.sh`
+- Script: `scripts/deploy_cloudrun.sh`
+- Cloud Build config: `cloudbuild.yaml`
 - GitHub Actions workflow: `.github/workflows/deploy-medicaidguard.yml`
+
+Update live links above once deployed.
