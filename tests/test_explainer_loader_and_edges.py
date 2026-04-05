@@ -84,7 +84,7 @@ def test_predict_router_returns_500_on_predictor_exception(monkeypatch):
         with TestClient(app) as client:
             response = client.post("/predict", json=SAMPLE_TXN)
             assert response.status_code == 500
-            assert "boom" in response.json()["detail"]
+            assert response.json()["detail"] == "Prediction failed."
     finally:
         app.dependency_overrides.clear()
 
@@ -130,7 +130,7 @@ def test_metrics_router_handles_runtime_state_error(client):
     try:
         response = client.get("/metrics")
         assert response.status_code == 503
-        assert "metrics unavailable" in response.json()["detail"]
+        assert response.json()["detail"] == "Metrics store unavailable."
     finally:
         client.app.state.metrics_store = original_metrics
 
@@ -139,3 +139,4 @@ def test_metrics_router_handles_runtime_state_error(client):
         no_raise_client.app.state.metrics_store = BrokenMetricsStore()
         response = no_raise_client.get("/metrics")
         assert response.status_code == 500
+        assert response.json()["detail"] == "Metrics snapshot failed."

@@ -1,4 +1,8 @@
+import builtins
+import hashlib
+import hmac
 import json
+import logging
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +10,13 @@ from tempfile import NamedTemporaryFile
 
 from app.config import Settings
 from app.services.preprocessor import FEATURE_NAMES
+from app.services.simple_model import SimpleFraudModel
+
+logger = logging.getLogger(__name__)
+
+_ALLOWED_PICKLE_GLOBALS = {
+    ("app.services.simple_model", "SimpleFraudModel"): SimpleFraudModel,
+}
 
 
 @dataclass(slots=True)
@@ -22,10 +33,11 @@ class ModelLoaderService:
         self.settings = settings
 
     def load(self) -> ModelArtifacts:
+        metadata = self._load_metadata()
         model_path = self._resolve_model_path()
+        self._verify_model_checksum(model_path, metadata)
         model = self._load_pickle(model_path)
         feature_names = self._load_feature_names()
-        metadata = self._load_metadata()
 
         if not feature_names:
             feature_names = list(getattr(model, "feature_order", FEATURE_NAMES))
@@ -67,7 +79,7 @@ class ModelLoaderService:
     @staticmethod
     def _load_pickle(path: Path):
         with path.open("rb") as f:
-            return pickle.load(f)
+            return _RestrictedModelUnpickler(f).load()
 
     def _load_feature_names(self) -> list[str]:
         path = Path(self.settings.feature_names_path)
@@ -92,3 +104,45 @@ class ModelLoaderService:
         if isinstance(payload, dict):
             return payload
         return {"model_version": self.settings.model_version}
+
+    def _verify_model_checksum(self, path: Path, metadata: dict) -> None:
+        expected_checksum = self._expected_model_sha256(metadata)
+        model_source = self.settings.model_source.strip().lower()
+
+        if model_source == "gcs" and not expected_checksum:
+            raise ValueError("MODEL_SHA256 or metadata sha256 is required for MODEL_SOURCE=gcs.")
+
+        if not expected_checksum:
+            return
+
+        actual_checksum = self._calculate_sha256(path)
+        if not hmac.compare_digest(actual_checksum.lower(), expected_checksum.lower()):
+            raise ValueError("Model SHA-256 checksum mismatch.")
+
+    def _expected_model_sha256(self, metadata: dict) -> str:
+        if self.settings.model_sha256:
+            return self.settings.model_sha256.strip()
+
+        for key in ("sha256", "model_sha256"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        return ""
+
+    @staticmethod
+    def _calculate_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+
+class _RestrictedModelUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str):
+        if (module, name) in _ALLOWED_PICKLE_GLOBALS:
+            return _ALLOWED_PICKLE_GLOBALS[(module, name)]
+        if module == "builtins" and name in {"set", "frozenset"}:
+            return getattr(builtins, name)
+        raise pickle.UnpicklingError(f"Disallowed pickle global: {module}.{name}")

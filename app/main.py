@@ -1,16 +1,20 @@
 from contextlib import asynccontextmanager
+import logging
 from time import time
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.security import require_api_key
 from app.routers import health_router, metrics_router, predict_router
 from app.services.explainer import ExplainerService
 from app.services.metrics_store import MetricsStore
 from app.services.model_loader import ModelLoaderService
 from app.services.predictor import PredictorService
 from app.services.preprocessor import FeaturePreprocessor
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -56,6 +60,7 @@ async def lifespan(app: FastAPI):
         app.state.model_version = model_version
         app.state.feature_names = feature_names
     except Exception as exc:
+        logger.exception("Model bootstrap failed")
         app.state.model_error = str(exc)
 
     yield
@@ -68,17 +73,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_allow_origins = get_settings().parsed_cors_allow_origins()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(health_router)
-app.include_router(metrics_router)
-app.include_router(predict_router)
+app.include_router(metrics_router, dependencies=[Depends(require_api_key)])
+app.include_router(predict_router, dependencies=[Depends(require_api_key)])
 
 
 @app.get("/")

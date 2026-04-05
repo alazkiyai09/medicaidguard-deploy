@@ -1,13 +1,20 @@
+import hashlib
 import pickle
 import sys
 import types
 from pathlib import Path
+
+import pytest
 
 from app.config import Settings
 from app.services.explainer import ExplainerService
 from app.services.model_loader import ModelLoaderService
 from app.services.preprocessor import FEATURE_NAMES
 from app.services.simple_model import SimpleFraudModel
+
+
+class UnsafeModel:
+    pass
 
 
 def test_explainer_shap_exception_falls_back_to_default(monkeypatch):
@@ -66,6 +73,7 @@ def test_model_loader_gcs_download_path(monkeypatch, tmp_path):
     feature_names = FEATURE_NAMES.copy()
     model = SimpleFraudModel(feature_order=feature_names, weights={}, intercept=0.0)
     payload = pickle.dumps(model)
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
 
     class FakeBlob:
         def exists(self):
@@ -92,6 +100,7 @@ def test_model_loader_gcs_download_path(monkeypatch, tmp_path):
         model_source="gcs",
         gcs_bucket="demo-bucket",
         gcs_model_key="models/model.pkl",
+        model_sha256=payload_sha256,
         feature_names_path="model/feature_names.json",
         model_metadata_path="model/model_metadata.json",
     )
@@ -121,3 +130,57 @@ def test_model_loader_non_list_feature_names_and_non_dict_metadata(tmp_path):
 
     assert artifacts.feature_names == FEATURE_NAMES
     assert artifacts.metadata["model_version"] == "2.0.0"
+
+
+def test_model_loader_rejects_untrusted_pickle_globals(tmp_path):
+    model_path = tmp_path / "unsafe.pkl"
+    metadata_path = tmp_path / "metadata.json"
+    model_path.write_bytes(pickle.dumps(UnsafeModel()))
+    metadata_path.write_text('{"model_version":"1.0.0"}', encoding="utf-8")
+
+    settings = Settings(
+        model_source="local",
+        model_path=str(model_path),
+        feature_names_path="model/feature_names.json",
+        model_metadata_path=str(metadata_path),
+    )
+
+    with pytest.raises(pickle.UnpicklingError):
+        ModelLoaderService(settings).load()
+
+
+def test_model_loader_requires_checksum_for_gcs(monkeypatch, tmp_path):
+    class FakeBlob:
+        def exists(self):
+            return True
+
+        def download_to_filename(self, filename: str):
+            Path(filename).write_bytes(b"payload")
+
+    class FakeBucket:
+        def blob(self, key: str):
+            return FakeBlob()
+
+    class FakeClient:
+        def bucket(self, bucket: str):
+            return FakeBucket()
+
+    fake_storage = types.SimpleNamespace(Client=lambda: FakeClient())
+    google_cloud = types.ModuleType("google.cloud")
+    google_cloud.storage = fake_storage
+    monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
+
+    metadata_path = tmp_path / "missing_checksum_metadata.json"
+    metadata_path.write_text('{"model_version":"1.0.0"}', encoding="utf-8")
+
+    settings = Settings(
+        model_source="gcs",
+        gcs_bucket="demo-bucket",
+        gcs_model_key="models/model.pkl",
+        feature_names_path="model/feature_names.json",
+        model_metadata_path=str(metadata_path),
+        model_sha256="",
+    )
+
+    with pytest.raises(ValueError, match="MODEL_SHA256"):
+        ModelLoaderService(settings).load()
